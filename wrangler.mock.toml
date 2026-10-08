@@ -1,0 +1,27 @@
+# [Define404] 로컬 시험 전용 설정: AI 바인딩이 없어 Cloudflare 계정에 접속하지 않는다
+# npm run dev:mock
+name = "munche-meo"
+main = "src/web/worker.ts"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "munche-meo"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1101"
+simple = { limit = 30, period = 60 }
+
+[vars]
+EMBED_MODEL = "@cf/baai/bge-m3"
+LLM_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+CONTACT_URL = "https://contact.define404.com"
+MAIL_FROM = "munche-meo <onboarding@resend.dev>"
+MOCK = "1"

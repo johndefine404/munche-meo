@@ -1,0 +1,30 @@
+{
+  "name": "munche-meo",
+  "version": "0.1.0",
+  "description": "문체냥, 한국어 문체 검사기: 문장마다 규칙 위반을 짚어 주는 CLI, MCP 서버, 웹 버전",
+  "author": "Define404 <john@define404.com>",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "bin": {
+    "munche-meo": "src/node/cli.ts",
+    "munche-meo-mcp": "src/node/mcp.ts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "check": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "dev": "wrangler dev",
+    "dev:mock": "wrangler d1 migrations apply DB --local -c wrangler.mock.toml && wrangler dev -c wrangler.mock.toml",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.13.0",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261006.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.148.0"
+  }
+}

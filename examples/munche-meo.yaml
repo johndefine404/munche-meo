@@ -1,0 +1,9 @@
+# 프로젝트 루트에 .munche-meo.yaml 로 두면 check 가 자동으로 읽습니다
+packs: [default, bullets]
+disable: []
+max_eojeol: 20
+prefer: formal
+rules:
+  - id: no-gogaeknim
+    description: 고객님 대신 손님
+    banned: [고객님]

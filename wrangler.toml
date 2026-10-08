@@ -1,0 +1,34 @@
+# [Define404] munche-meo 웹 버전 (Cloudflare Workers)
+name = "munche-meo"
+main = "src/web/worker.ts"
+compatibility_date = "2026-09-01"
+
+# 검사 화면 (public/)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# 가이드 임베딩(bge-m3)과 판정 모델
+[ai]
+binding = "AI"
+
+# 리드, 내 규칙, 가이드 조각
+[[d1_databases]]
+binding = "DB"
+database_name = "munche-meo"
+database_id = "00000000-0000-0000-0000-000000000000" # wrangler d1 create munche-meo 로 만든 값으로 바꾼다
+migrations_dir = "migrations"
+
+# 접속자 한 명당 1분에 30번까지
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1101"
+simple = { limit = 30, period = 60 }
+
+[vars]
+EMBED_MODEL = "@cf/baai/bge-m3"
+LLM_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+CONTACT_URL = "https://contact.define404.com"
+MAIL_FROM = "munche-meo <onboarding@resend.dev>"
+# 1이면 Workers AI를 부르지 않고 로컬 임베딩과 시험용 판정기를 쓴다
+MOCK = "0"

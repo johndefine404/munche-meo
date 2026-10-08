@@ -1,0 +1,152 @@
+<!doctype html>
+<!-- [Define404] munche-meo 웹 버전 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>문체냥: 한국어 문체 검사기</title>
+<meta name="description" content="한국어 글을 붙여 넣으면 엠대시, 존댓말·반말 섞임, 긴 문장, 고객용 글의 마크다운 기호, AI 상투어를 문장마다 짚어 주는 오픈소스 검사기">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./"><img src="./logo.svg" alt="" width="32" height="32">문체냥</a>
+    <nav>
+      <a href="#rules">규칙</a>
+      <a href="#mine">내 규칙·가이드</a>
+      <a href="#use">쓰는 길</a>
+      <a href="https://github.com/johndefine404/munche-meo">GitHub</a>
+    </nav>
+  </header>
+
+  <section class="intro">
+    <h1>한국어 글, 정한 규칙대로 썼는지 문장마다 짚어 드립니다</h1>
+    <p class="lead">고쳐 쓰지는 않습니다. 어느 문장이 어떤 규칙에 걸렸는지만 보여 드립니다. 기본 규칙 검사는 가입 없이 무료이고, 글은 서버에 남기지 않습니다.</p>
+  </section>
+
+  <section class="checker" aria-label="글 검사">
+    <form id="check-form" class="pane input-pane">
+      <label for="text" class="pane-title">검사할 글</label>
+      <textarea id="text" name="text" rows="14" maxlength="20000" placeholder="여기에 글을 붙여 넣으세요"></textarea>
+      <div class="opts">
+        <label class="opt"><input type="checkbox" name="pack" value="external-message"> 고객에게 보낼 글 (마크다운 기호 금지)</label>
+        <label class="opt"><input type="checkbox" name="pack" value="bullets"> 보고용 글 (줄글 문단 금지)</label>
+        <label class="opt guide-only" hidden><input type="checkbox" id="use-guide"> 내 가이드 문서로도 판정</label>
+      </div>
+      <div class="row">
+        <button type="submit" class="btn primary">검사하기</button>
+        <button type="button" class="btn ghost" id="sample-btn">예시 글 넣기</button>
+        <span class="count" id="char-count">0자</span>
+      </div>
+    </form>
+
+    <div class="pane result-pane" aria-live="polite">
+      <div class="pane-title">결과</div>
+      <div id="summary" class="summary">글을 넣고 검사하기를 누르면 여기에 위반이 문장별로 나옵니다.</div>
+      <ol id="results" class="results"></ol>
+    </div>
+  </section>
+
+  <section class="block" id="rules">
+    <div class="sec-head">
+      <div class="no">01 규칙</div>
+      <div><h2>기본 규칙은 결과가 매번 같고 0원입니다</h2><p>AI를 부르지 않고 규칙표로만 봅니다. 상투어·번역투 목록은 직접 고른 예시라 걸려도 고칠지는 글쓴이가 정합니다.</p></div>
+    </div>
+    <table class="rule-table">
+      <thead><tr><th>규칙</th><th>묶음</th><th>단계</th><th>무엇을 보나</th></tr></thead>
+      <tbody id="rule-rows"></tbody>
+    </table>
+  </section>
+
+  <section class="block" id="mine">
+    <div class="sec-head">
+      <div class="no">02 내 규칙·가이드</div>
+      <div><h2>메일로 가입하면 내 규칙과 가이드 문서를 쓸 수 있습니다</h2><p>금지어, 바꿀 말, 정규식, 문장 끝 어미 조건을 YAML로 저장합니다. 문체 가이드나 용어집을 올리면 문단마다 관련 조각을 찾아 AI가 어긋나는지 판정하고 근거를 같이 보여 드립니다.</p></div>
+    </div>
+
+    <form id="signup" class="card signup">
+      <label for="email" class="field-label">메일 주소</label>
+      <input id="email" type="email" required autocomplete="email" placeholder="name@example.com">
+
+      <label class="consent">
+        <input type="checkbox" id="consent-privacy" required>
+        <span><b>(필수)</b> 개인정보 수집·이용에 동의합니다</span>
+      </label>
+      <details class="consent-detail">
+        <summary>내용 보기</summary>
+        <ul>
+          <li>수집 항목: 메일 주소</li>
+          <li>이용 목적: 회원 식별, 내 규칙 저장, 가이드 문서 등록 기능 제공, 서비스 관련 안내</li>
+          <li>보유 기간: 탈퇴할 때까지. 탈퇴하면 메일 주소, 규칙, 가이드 문서를 바로 지웁니다</li>
+          <li>동의를 거부할 수 있으며, 거부하면 가입 기능만 쓸 수 없습니다. 기본 규칙 검사는 그대로 쓸 수 있습니다</li>
+        </ul>
+      </details>
+
+      <label class="consent">
+        <input type="checkbox" id="consent-marketing">
+        <span><b>(선택)</b> 광고성 정보 수신에 동의합니다</span>
+      </label>
+      <details class="consent-detail">
+        <summary>내용 보기</summary>
+        <ul>
+          <li>보내는 것: Define404의 새 기능, 설치·가이드 정리 대행 안내</li>
+          <li>보내는 방법: 메일</li>
+          <li>동의하지 않아도 가입과 모든 기능을 똑같이 쓸 수 있고, 언제든 수신을 거부할 수 있습니다</li>
+        </ul>
+      </details>
+      <button type="submit" class="btn primary">가입하고 열쇠 받기</button>
+      <p class="note" id="signup-msg">가입하면 이 브라우저에 열쇠가 저장됩니다. 메일 확인 기능은 아직 없어서, 열쇠를 잃어버리면 같은 메일로 다시 받을 수 없습니다.</p>
+    </form>
+
+    <div id="member" class="member" hidden>
+      <div class="card">
+        <div class="card-head"><h3>내 규칙 (YAML)</h3><span class="note" id="rules-msg"></span></div>
+        <textarea id="rules-yaml" rows="12" spellcheck="false"></textarea>
+        <div class="row"><button class="btn primary" id="save-rules" type="button">규칙 저장</button></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>가이드 문서</h3><span class="note" id="guide-msg"></span></div>
+        <ul id="guide-list" class="guide-list"></ul>
+        <label class="field-label" for="guide-file">.md, .txt 파일</label>
+        <input id="guide-file" type="file" accept=".md,.markdown,.txt,text/plain,text/markdown">
+        <div class="row"><button class="btn primary" id="add-guide" type="button">문서 등록</button></div>
+      </div>
+      <div class="card key">
+        <div><b>내 열쇠</b><span class="note">MCP나 다른 기기에서 쓸 때 필요합니다. 남에게 보여 주지 마세요.</span></div>
+        <div class="row"><button class="btn ghost" id="show-key" type="button">열쇠 보기</button><button class="btn ghost danger" id="leave" type="button">탈퇴하고 모두 지우기</button></div>
+        <code id="key-text" hidden></code>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="use">
+    <div class="sec-head">
+      <div class="no">03 쓰는 길</div>
+      <div><h2>AI 도구 안에서, 커밋 전에, 답변이 끝날 때</h2><p>같은 규칙 엔진을 MCP 서버, 명령줄, Claude Code 훅에서 씁니다. 설치 순서는 GitHub README에 있습니다.</p></div>
+    </div>
+    <dl class="ways">
+      <div><dt>MCP 서버</dt><dd>Claude 데스크톱, Claude Code, Cursor에서 <code>check_text</code>, <code>add_rule</code>, <code>add_guide_document</code> 도구로 부릅니다.</dd></div>
+      <div><dt>명령줄</dt><dd><code>munche-meo check docs/</code> 위반이 있으면 실패로 끝나서 커밋 전 검사나 CI에 넣을 수 있습니다.</dd></div>
+      <div><dt>Claude Code 훅</dt><dd>답변이 끝날 때 마지막 답변을 검사하고, 걸리면 Claude가 그 부분만 다시 씁니다.</dd></div>
+    </dl>
+  </section>
+
+  <section class="cta">
+    <div>
+      <h2>팀 문체 가이드를 규칙으로 옮기는 일이 막막하다면</h2>
+      <p>회사 브랜드 보이스 문서, 사내 용어집을 규칙 파일과 가이드 문서로 정리하고 팀 도구에 설치해 드립니다.</p>
+    </div>
+    <a class="btn primary" id="contact" href="https://contact.define404.com" target="_blank" rel="noopener">설치·가이드 정리 대행 문의</a>
+  </section>
+
+  <footer>
+    <span>문체냥 (munche-meo) · MIT License · 만든 곳 Define404</span>
+    <span>기본 검사에 넣은 글은 저장하지 않습니다.</span>
+  </footer>
+</div>
+<script src="./app.js" defer></script>
+</body>
+</html>

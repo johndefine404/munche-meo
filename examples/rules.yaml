@@ -1,0 +1,23 @@
+# 내 규칙 예시. munche-meo check --rules examples/rules.yaml
+rules:
+  - id: no-gogaeknim
+    description: 고객님 대신 손님이라고 씁니다
+    severity: warn
+    banned: [고객님]
+
+  - id: brand-name
+    description: 회사 이름 표기
+    severity: error
+    replace:
+      디파인404: Define404
+
+  - id: no-double-bang
+    description: 느낌표를 겹쳐 쓰지 않습니다
+    severity: info
+    regex: "!{2,}"
+
+  - id: no-nominal-ending
+    description: 명사형 종결(~함, ~됨)을 쓰지 않습니다
+    severity: warn
+    ending:
+      forbid: [함, 됨, 있음, 없음]

@@ -1,0 +1,6 @@
+# 로컬 시험용 비밀값. 이 파일을 .dev.vars 로 복사해서 채운다 (.dev.vars 는 저장소에 올리지 않는다)
+# 운영에서는 같은 이름으로 npx wrangler secret put <이름> 을 쓴다
+
+# 가입 알림 메일 (Resend). 비우면 알림을 콘솔에만 남긴다
+RESEND_API_KEY=
+OWNER_EMAIL=
