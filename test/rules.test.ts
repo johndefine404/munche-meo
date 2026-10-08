@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkRules } from "../src/core/check.ts";
 import { classify } from "../src/core/ending.ts";
+import { consentNotice, marketingActive, marketingExpiresAt } from "../src/core/consent.ts";
 import { chunkGuide } from "../src/core/guide.ts";
 import { handleRpc } from "../src/core/mcp.ts";
 import { compileSpec, parseRuleYaml } from "../src/core/user-rules.ts";
@@ -157,4 +158,24 @@ test("MCP: initialize, tools/list, tools/call", async () => {
   assert.ok(body.violations.some((v: any) => v.rule === "em-dash"));
   const bad = (await handleRpc({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "add_rule", arguments: { id: "X" } } }, tools, "x", "0")) as any;
   assert.equal(bad.result.isError, true);
+});
+
+test("광고 수신 동의: 2년이 지나면 끝나고, 처리 결과 안내에 보낸 곳·연락처·철회 링크가 있다", () => {
+  const at = "2026-10-09T01:00:00.000Z";
+  assert.equal(marketingExpiresAt(at).slice(0, 10), "2028-10-08");
+  const row = { consent_marketing: 1, consent_marketing_at: at };
+  assert.equal(marketingActive(row, new Date("2028-10-07T00:00:00Z")), true);
+  assert.equal(marketingActive(row, new Date("2028-10-09T00:00:00Z")), false);
+  assert.equal(marketingActive({ consent_marketing: 0, consent_marketing_at: null }), false);
+
+  const n = consentNotice({ action: "consent", at, contactUrl: "https://contact.define404.com", unsubscribeUrl: "https://x.test/api/unsubscribe?t=abc" });
+  assert.doesNotMatch(n.subject, /광고\)/);
+  assert.match(n.text, /보낸 곳: Define404/);
+  assert.match(n.text, /연락처: https:\/\/contact\.define404\.com/);
+  assert.match(n.text, /수신 거부.*unsubscribe\?t=abc/);
+  assert.match(n.text, /2028-10-08까지/);
+  const w = consentNotice({ action: "withdraw", at, contactUrl: "https://contact.define404.com" });
+  assert.match(w.text, /철회/);
+  assert.doesNotMatch(w.text, /unsubscribe/);
+  for (const t of [n.subject, n.text, w.text]) assert.equal(t.includes(EM), false);
 });

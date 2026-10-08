@@ -32,3 +32,7 @@ CONTACT_URL = "https://contact.define404.com"
 MAIL_FROM = "munche-meo <onboarding@resend.dev>"
 # 1이면 Workers AI를 부르지 않고 로컬 임베딩과 시험용 판정기를 쓴다
 MOCK = "0"
+
+# 매일 01:00 UTC(한국 시각 오전 10시): 2년 지난 광고 수신 동의를 끝내고 본인에게 알린다
+[triggers]
+crons = ["0 1 * * *"]

@@ -3,6 +3,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { checkRules } from "../core/check.ts";
 import { checkWithGuide, chunkGuide, cosine, localEmbed, mockComplete, type Complete, type GuideHit } from "../core/guide.ts";
+import { consentNotice, marketingActive, marketingExpiresAt, MARKETING_TTL_DAYS, type ConsentAction } from "../core/consent.ts";
 import { CHECK_TEXT_SCHEMA, handleRpc, type Tool } from "../core/mcp.ts";
 import { BUILTIN_RULES, PACKS } from "../core/rules.ts";
 import type { CheckOptions, Violation } from "../core/types.ts";
@@ -151,17 +152,42 @@ app.post("/api/signup", async (c) => {
   // 메일 확인 기능이 없는 v0.1 에서는 같은 메일로 새 열쇠를 내주지 않는다 (남의 메일로 열쇠를 가로채지 못하게)
   if (exists) return c.json({ error: "이미 가입한 메일입니다. 처음 받은 열쇠를 써 주세요" }, 409);
 
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  const token = [...bytes].map((x) => x.toString(16).padStart(2, "0")).join("");
+  const token = randomHex();
+  const unsub = randomHex();
   const now = new Date().toISOString();
   await c.env.DB.prepare(
-    "INSERT INTO leads (email, token_hash, consent_privacy_at, consent_marketing, consent_marketing_at, consent_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO leads (email, token_hash, consent_privacy_at, consent_marketing, consent_marketing_at, consent_version, created_at, unsub_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
   )
-    .bind(email, await sha256(token), now, marketing ? 1 : 0, marketing ? now : null, CONSENT_VERSION, now)
+    .bind(email, await sha256(token), now, marketing ? 1 : 0, marketing ? now : null, CONSENT_VERSION, now, unsub)
     .run();
   c.executionCtx.waitUntil(notifyOwner(c.env, email, marketing));
+  // 광고 수신 동의·거부 결과를 본인에게 알린다 (정보통신망법 제50조 제7항)
+  c.executionCtx.waitUntil(notifyConsent(c.env, email, marketing ? "consent" : "refuse", now, marketing ? unsubUrl(c, unsub) : undefined));
   return c.json({ token, email, consent_marketing: marketing });
 });
+
+function randomHex(): string {
+  return [...crypto.getRandomValues(new Uint8Array(32))].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+function unsubUrl(c: C, unsub: string): string {
+  return `${new URL(c.req.url).origin}/api/unsubscribe?t=${unsub}`;
+}
+
+// 처리 결과 안내 메일. 메일 설정(RESEND_API_KEY)이 없으면 메일 주소 없이 처리 종류만 로그에 남긴다
+async function notifyConsent(env: Env, email: string, action: ConsentAction, at: string, unsubscribeUrl?: string) {
+  const { subject, text } = consentNotice({ action, at, contactUrl: env.CONTACT_URL, unsubscribeUrl });
+  if (!env.RESEND_API_KEY) {
+    console.log(`동의 처리 결과 안내 (메일 미설정): ${action} ${at}`);
+    return;
+  }
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({ from: env.MAIL_FROM, to: [email], subject, text }),
+  });
+  if (!res.ok) console.error("동의 처리 결과 안내 메일 실패", res.status);
+}
 
 async function notifyOwner(env: Env, email: string, marketing: boolean) {
   const body = `munche-meo 새 가입\n메일: ${email}\n광고성 정보 수신: ${marketing ? "동의" : "미동의"}\n시각: ${new Date().toISOString()}`;
@@ -177,15 +203,60 @@ async function notifyOwner(env: Env, email: string, marketing: boolean) {
   if (!res.ok) console.error("가입 알림 메일 실패", res.status);
 }
 
+type LeadRow = { email: string; consent_marketing: number; consent_marketing_at: string | null; unsub_token: string | null };
+
+// 내 가입 정보와 광고 수신 동의 상태. 2년이 지난 동의는 끝난 것으로 보여 준다
+app.get("/api/me", auth, async (c) => {
+  const row = (await c.env.DB.prepare("SELECT email, consent_marketing, consent_marketing_at, unsub_token FROM leads WHERE id = ?").bind(c.get("leadId")).first<LeadRow>())!;
+  const active = marketingActive(row);
+  return c.json({ email: row.email, consent_marketing: active, consent_marketing_at: active ? row.consent_marketing_at : null, consent_marketing_expires_at: active ? marketingExpiresAt(row.consent_marketing_at!) : null });
+});
+
+// 가입 뒤에 광고 수신 동의를 하거나 철회한다. 어느 쪽이든 다른 기능에는 영향이 없다
+app.put("/api/me/marketing", auth, async (c) => {
+  const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+  if (typeof b.consent !== "boolean") return c.json({ error: "consent 값(true, false)이 필요합니다" }, 400);
+  const id = c.get("leadId");
+  const row = (await c.env.DB.prepare("SELECT email, consent_marketing, consent_marketing_at, unsub_token FROM leads WHERE id = ?").bind(id).first<LeadRow>())!;
+  const now = new Date().toISOString();
+  if (b.consent) {
+    const unsub = row.unsub_token || randomHex();
+    await c.env.DB.prepare("UPDATE leads SET consent_marketing = 1, consent_marketing_at = ?, unsub_token = ? WHERE id = ?").bind(now, unsub, id).run();
+    c.executionCtx.waitUntil(notifyConsent(c.env, row.email, "consent", now, unsubUrl(c, unsub)));
+  } else {
+    await c.env.DB.prepare("UPDATE leads SET consent_marketing = 0, consent_marketing_at = NULL WHERE id = ?").bind(id).run();
+    c.executionCtx.waitUntil(notifyConsent(c.env, row.email, "withdraw", now));
+  }
+  return c.json({ consent_marketing: b.consent, at: now, notice: c.env.RESEND_API_KEY ? "mail" : "log" });
+});
+
+// 메일 속 수신 거부 링크. 열쇠 없이 한 번 누르면 철회되고 비용이 들지 않는다 (제50조 제4항·제6항)
+app.on(["GET", "POST"], "/api/unsubscribe", async (c) => {
+  const t = c.req.query("t") || "";
+  const page = (msg: string, status: 200 | 404) =>
+    c.html(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>문체냥 수신 거부</title></head><body style="font-family:sans-serif;max-width:560px;margin:40px auto;padding:0 16px;word-break:keep-all"><p>${msg}</p><p>보낸 곳: Define404 · 연락처: <a href="${c.env.CONTACT_URL}">${c.env.CONTACT_URL}</a></p></body></html>`, status);
+  if (!/^[a-f0-9]{64}$/.test(t)) return page("수신 거부 링크가 맞지 않습니다. 연락처로 알려 주시면 바로 철회해 드립니다.", 404);
+  const row = await c.env.DB.prepare("SELECT email, consent_marketing, consent_marketing_at, unsub_token FROM leads WHERE unsub_token = ?").bind(t).first<LeadRow>();
+  if (!row) return page("이미 탈퇴했거나 없는 링크입니다. 광고성 메일은 보내지 않습니다.", 404);
+  if (row.consent_marketing) {
+    const now = new Date().toISOString();
+    await c.env.DB.prepare("UPDATE leads SET consent_marketing = 0, consent_marketing_at = NULL WHERE unsub_token = ?").bind(t).run();
+    c.executionCtx.waitUntil(notifyConsent(c.env, row.email, "withdraw", now));
+  }
+  return page(`광고성 정보 수신 동의를 철회했습니다. 이후 광고성 메일은 보내지 않습니다.${c.env.RESEND_API_KEY ? " 처리 결과는 메일로도 알려 드립니다." : ""}`, 200);
+});
+
 // 탈퇴: 메일, 동의 기록, 규칙, 가이드를 모두 지운다
 app.delete("/api/me", auth, async (c) => {
   const id = c.get("leadId");
+  const row = await c.env.DB.prepare("SELECT email FROM leads WHERE id = ?").bind(id).first<{ email: string }>();
   await c.env.DB.batch([
     c.env.DB.prepare("DELETE FROM guide_chunks WHERE lead_id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM guides WHERE lead_id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM user_rules WHERE lead_id = ?").bind(id),
     c.env.DB.prepare("DELETE FROM leads WHERE id = ?").bind(id),
   ]);
+  if (row) c.executionCtx.waitUntil(notifyConsent(c.env, row.email, "leave", new Date().toISOString()));
   return c.json({ deleted: true });
 });
 
@@ -312,4 +383,20 @@ app.onError((err, c) => {
   return c.json({ error: "잠시 후 다시 시도해 주세요" }, 500);
 });
 
-export default app;
+// 매일 한국 시각 오전 10시(wrangler.toml cron): 동의한 지 2년이 지난 광고 수신 동의를 끝내고 본인에게 알린다 (제50조 제8항)
+async function expireMarketing(env: Env) {
+  const cutoff = new Date(Date.now() - MARKETING_TTL_DAYS * 86400000).toISOString();
+  const rows = await env.DB.prepare("SELECT id, email FROM leads WHERE consent_marketing = 1 AND consent_marketing_at <= ?").bind(cutoff).all<{ id: number; email: string }>();
+  const now = new Date().toISOString();
+  for (const r of rows.results) {
+    await env.DB.prepare("UPDATE leads SET consent_marketing = 0, consent_marketing_at = NULL WHERE id = ?").bind(r.id).run();
+    await notifyConsent(env, r.email, "expire", now);
+  }
+}
+
+export default {
+  fetch: app.fetch,
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(expireMarketing(env));
+  },
+} satisfies ExportedHandler<Env>;

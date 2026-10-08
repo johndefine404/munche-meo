@@ -95,11 +95,29 @@
     try {
       const r = await api("/api/rules");
       $("#rules-yaml").value = r.yaml || RULE_SAMPLE;
+      await loadMarketing();
       await loadGuides();
     } catch (err) {
       if (err.status === 401) { saveToken(null); location.reload(); }
     }
   }
+
+  async function loadMarketing() {
+    const me = await api("/api/me");
+    $("#member-marketing").checked = me.consent_marketing;
+    if (me.consent_marketing) $("#marketing-msg").textContent = `광고성 정보 수신 동의 중입니다 (${me.consent_marketing_at.slice(0, 10)} 동의, ${me.consent_marketing_expires_at.slice(0, 10)}까지). 체크를 풀면 바로 철회됩니다.`;
+  }
+
+  $("#member-marketing").addEventListener("change", async (e) => {
+    try {
+      const r = await api("/api/me/marketing", { method: "PUT", body: JSON.stringify({ consent: e.target.checked }) });
+      const done = r.consent_marketing ? "광고성 정보 수신 동의를 처리했습니다." : "광고성 정보 수신 동의를 철회했습니다.";
+      $("#marketing-msg").textContent = `${done} ${r.notice === "mail" ? "처리 결과 안내 메일을 보냅니다." : "이 서버는 메일 발송이 설정되지 않아 처리 기록만 남깁니다."}`;
+    } catch (err) {
+      e.target.checked = !e.target.checked;
+      $("#marketing-msg").textContent = err.message;
+    }
+  });
 
   async function loadGuides() {
     const { guides } = await api("/api/guides");
