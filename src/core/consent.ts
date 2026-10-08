@@ -26,7 +26,7 @@ const ACTION_TEXT: Record<ConsentAction, string> = {
 };
 
 // 처리 결과 안내 메일. 광고를 넣지 않는 안내 메일이라 제목에 (광고)를 붙이지 않는다
-export function consentNotice(opts: { action: ConsentAction; at: string; contactUrl: string; unsubscribeUrl?: string }): { subject: string; text: string } {
+export function consentNotice(opts: { action: ConsentAction; at: string; contactUrl: string; privacyUrl?: string; unsubscribeUrl?: string }): { subject: string; text: string } {
   const lines = [
     "문체냥(munche-meo) 광고성 정보 수신 동의 처리 결과를 알려 드립니다.",
     "",
@@ -38,5 +38,6 @@ export function consentNotice(opts: { action: ConsentAction; at: string; contact
     if (opts.unsubscribeUrl) lines.push(`수신 거부(한 번 누르면 철회, 비용 없음): ${opts.unsubscribeUrl}`);
   }
   lines.push("", `보낸 곳: ${SENDER_NAME}`, `연락처: ${opts.contactUrl}`);
+  if (opts.privacyUrl) lines.push(`개인정보 처리방침: ${opts.privacyUrl}`);
   return { subject: "[문체냥] 광고성 정보 수신 동의 처리 결과 안내", text: lines.join("\n") };
 }

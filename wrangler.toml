@@ -29,6 +29,8 @@ simple = { limit = 30, period = 60 }
 EMBED_MODEL = "@cf/baai/bge-m3"
 LLM_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 CONTACT_URL = "https://contact.define404.com"
+# 동의 문구와 화면 아래에 거는 개인정보 처리방침 주소. 직접 운영하면 본인 방침 주소로 바꾼다
+PRIVACY_URL = "https://contact.define404.com/privacy.html"
 MAIL_FROM = "munche-meo <onboarding@resend.dev>"
 # 1이면 Workers AI를 부르지 않고 로컬 임베딩과 시험용 판정기를 쓴다
 MOCK = "0"

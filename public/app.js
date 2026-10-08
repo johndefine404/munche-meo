@@ -83,6 +83,12 @@
       .map((r) => `<tr><td><code>${esc(r.id)}</code></td><td>${esc(r.pack)}</td><td><span class="sev ${r.severity}">${SEV[r.severity]}</span></td><td>${esc(r.description)}</td></tr>`)
       .join("");
     if (m.contact) $("#contact").href = m.contact;
+    if (m.privacy) document.querySelectorAll(".privacy-link").forEach((a) => (a.href = m.privacy));
+    if (m.signup === false) {
+      const btn = $("#signup button[type=submit]");
+      btn.disabled = true;
+      $("#signup-msg").textContent = "가입과 내 규칙·가이드 기능은 준비 중입니다. 위의 기본 검사는 지금 바로 쓸 수 있습니다.";
+    }
   }).catch(() => {});
 
   // ---------- 가입 ----------

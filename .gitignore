@@ -17,3 +17,4 @@ secrets/
 *.pem
 *.key
 __pycache__/
+wrangler.prod.toml

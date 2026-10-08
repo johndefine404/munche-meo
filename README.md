@@ -224,7 +224,8 @@ claude mcp add munche-meo -- node /절대경로/munche-meo/src/node/mcp.ts
   - 가입하면 열쇠(무작위 64자)를 주고 서버에는 해시만 둡니다. 메일 확인 기능은 아직 없어서 같은 메일로 열쇠를 다시 받을 수 없습니다
   - 탈퇴하면 메일, 동의 기록, 규칙, 가이드를 바로 지웁니다
 - 가이드 임베딩은 Workers AI `@cf/baai/bge-m3`, 판정은 `@cf/meta/llama-3.3-70b-instruct-fp8-fast`입니다. 조각은 D1에 두고 코사인은 워커에서 계산합니다 (Vectorize 전환은 다음 판)
-- 새 가입이 오면 `RESEND_API_KEY`, `OWNER_EMAIL`이 있을 때 메일로 알리고, 없으면 로그에만 남깁니다
+- 새 가입이 오면 메일 설정(Gmail 또는 Resend)과 `OWNER_EMAIL`이 있을 때 메일로 알리고, 없으면 메일 주소 없이 로그에만 남깁니다
+- D1을 붙이지 않고 배포하면 기본 검사와 원격 MCP만 열리고, 가입·내 규칙·가이드는 "준비 중"(503)으로 닫힙니다
 - 접속자별 요청 제한(1분 30번), 글 2만 자, 문서 10개·조각 300개 상한이 있습니다
 
 ### 개인정보와 광고 수신
@@ -243,9 +244,10 @@ claude mcp add munche-meo -- node /절대경로/munche-meo/src/node/mcp.ts
   - 기간: 철회하거나 탈퇴할 때까지. 동의한 지 2년이 지나면 동의를 끝냅니다(재확인 방식은 자동 종료로 정했습니다. 매일 한국 시각 오전 10시 cron이 처리하고 본인에게 알립니다)
   - 동의하지 않아도 모든 기능을 똑같이 씁니다
   - 철회: 가입 후 화면의 체크 풀기, 또는 메일 속 링크 한 번(`/api/unsubscribe`, 열쇠 없이 비용 없음)
-  - 동의, 거부, 철회, 탈퇴, 자동 종료 때마다 처리 결과 안내 메일을 본인에게 보냅니다. 안내 메일에는 광고를 넣지 않고 보낸 곳(Define404)과 연락처를 적습니다. `RESEND_API_KEY`가 없으면 메일 대신 처리 종류만 로그에 남깁니다
+  - 동의, 거부, 철회, 탈퇴, 자동 종료 때마다 처리 결과 안내 메일을 본인에게 보냅니다. 안내 메일에는 광고를 넣지 않고 보낸 곳(Define404)과 연락처를 적습니다. 메일 설정이 없으면 메일 대신 처리 종류만 로그에 남깁니다
 - 지금 판에는 광고성 메일을 보내는 기능이 없습니다. 나중에 넣으면 동의가 유효한 사람에게만, 한국 시각 오전 8시부터 오후 9시 전까지만, 제목을 (광고)로 시작하고 보낸 곳·연락처·수신 거부 링크를 넣어 보냅니다
-- 자료를 맡기는 곳: Cloudflare(서버, D1 저장소, Workers AI), Resend(메일 발송, 설정한 경우만)
+- 자료를 맡기는 곳: Cloudflare(서버, D1 저장소, Workers AI), 메일 발송 업체(Google Workspace Gmail 또는 Resend, 설정한 쪽만)
+- 동의 문구, 화면 아래, 수신 거부 화면, 안내 메일에 개인정보 처리방침 링크(`PRIVACY_URL`)를 겁니다
 - 기준으로 삼은 조문
   - 개인정보 보호법 제15조 제2항: 목적, 항목, 보유·이용 기간, 거부권과 거부 시 불이익을 알리고 동의를 받습니다
   - 개인정보 보호법 제22조 제1항·제5항: 동의는 항목별로 나누고, 광고 수신 동의는 따로 받으며, 선택 동의를 안 했다고 서비스를 거절하지 않습니다
@@ -260,12 +262,17 @@ npm run dev:mock      # D1 로컬 마이그레이션 + wrangler dev (wrangler.mo
 
 `wrangler.mock.toml`은 AI 바인딩이 없어 Cloudflare 계정에 접속하지 않습니다. 가이드 판정은 로컬 임베딩과 시험용 판정기로 돕니다.
 
-### 배포 (아직 하지 않았습니다)
+### 배포
 
 ```bash
 npx wrangler login
 npx wrangler d1 create munche-meo      # 나온 database_id 를 wrangler.toml 에 넣는다
 npx wrangler d1 migrations apply DB --remote
+# 메일은 아래 둘 중 하나 (둘 다 없으면 로그만)
+npx wrangler secret put GMAIL_CLIENT_ID
+npx wrangler secret put GMAIL_CLIENT_SECRET
+npx wrangler secret put GMAIL_REFRESH_TOKEN
+# 또는
 npx wrangler secret put RESEND_API_KEY
 npx wrangler secret put OWNER_EMAIL
 npx wrangler deploy
@@ -276,10 +283,24 @@ npx wrangler deploy
 | `EMBED_MODEL` | vars | 가이드 임베딩 모델 |
 | `LLM_MODEL` | vars | 가이드 판정 모델 |
 | `CONTACT_URL` | vars | 대행 문의 버튼 주소 |
-| `MAIL_FROM` | vars | 알림 메일 보내는 주소 |
+| `MAIL_FROM` | vars | 알림 메일 보내는 주소 (`이름 <주소>`). Gmail이면 그 계정 주소나 등록한 별칭이어야 합니다 |
+| `PRIVACY_URL` | vars | 개인정보 처리방침 주소. 직접 운영하면 본인 방침으로 바꿉니다 |
 | `MOCK` | vars | `1`이면 Workers AI를 부르지 않습니다 |
-| `RESEND_API_KEY` | secret | 동의 처리 결과 안내 메일과 가입 알림 메일 (선택, 없으면 로그만) |
+| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | secret | Gmail API로 메일 보내기 (선택, 셋 다 있으면 Resend보다 먼저 씁니다) |
+| `RESEND_API_KEY` | secret | Resend로 메일 보내기 (선택, 없으면 로그만) |
 | `OWNER_EMAIL` | secret | 가입 알림을 받을 운영자 메일 (선택) |
+
+### Gmail로 메일 보내기
+
+Google Workspace나 Gmail 계정으로 보낼 때 씁니다. 발송 권한(`gmail.send`)만 받습니다.
+
+1. Google Cloud 콘솔에서 프로젝트를 고르고 Gmail API를 켭니다
+2. OAuth 동의 화면을 만듭니다. Workspace면 사용자 유형을 내부로 두면 검수 없이 씁니다
+3. 사용자 인증 정보에서 OAuth 클라이언트 ID를 만듭니다. 유형은 데스크톱 앱입니다
+4. 받은 클라이언트로 `https://www.googleapis.com/auth/gmail.send` 범위만 요청해 로그인하고, 갱신 토큰(refresh token)을 받습니다. 예: Google OAuth Playground에서 내 클라이언트 ID·비밀값을 넣고 위 범위로 승인한 뒤 토큰 교환
+5. 세 값을 `wrangler secret put`으로 넣습니다. 파일이나 저장소에 적지 않습니다
+
+워커는 갱신 토큰으로 접근 토큰을 받아 만료 전까지 메모리에 두고, UTF-8 제목과 보낸 이 이름, 글자·HTML 두 부분이 든 메시지를 `users/me/messages/send`로 보냅니다.
 
 ## 폴더
 

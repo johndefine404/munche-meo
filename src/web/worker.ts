@@ -8,6 +8,7 @@ import { CHECK_TEXT_SCHEMA, handleRpc, type Tool } from "../core/mcp.ts";
 import { BUILTIN_RULES, PACKS } from "../core/rules.ts";
 import type { CheckOptions, Violation } from "../core/types.ts";
 import { compileSpec, parseRuleYaml } from "../core/user-rules.ts";
+import { mailProvider, sendMail } from "../core/mail.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -17,8 +18,12 @@ interface Env {
   EMBED_MODEL: string;
   LLM_MODEL: string;
   CONTACT_URL: string;
+  PRIVACY_URL?: string;
   MAIL_FROM: string;
   MOCK?: string;
+  GMAIL_CLIENT_ID?: string;
+  GMAIL_CLIENT_SECRET?: string;
+  GMAIL_REFRESH_TOKEN?: string;
   RESEND_API_KEY?: string;
   OWNER_EMAIL?: string;
 }
@@ -29,6 +34,12 @@ type C = Context<{ Bindings: Env; Variables: Vars }>;
 const VERSION = "0.1.0";
 const CONSENT_VERSION = "2026-10-09";
 const MCP_BATCH_MAX = 20;
+const DEFAULT_PRIVACY_URL = "https://contact.define404.com/privacy.html";
+const privacyUrl = (env: Env) => env.PRIVACY_URL || DEFAULT_PRIVACY_URL;
+const mailOn = (env: Env) => mailProvider(env) !== "log";
+// D1을 아직 붙이지 않은 배포에서는 기본 검사만 열고 가입·내 규칙·가이드는 닫아 둔다
+const hasDb = (env: Env) => Boolean((env as Partial<Env>).DB);
+const NO_DB = { error: "가입과 내 규칙·가이드 기능은 준비 중입니다. 기본 검사는 그대로 쓸 수 있습니다" };
 const LIMITS = { text: 20000, guideText: 50000, guides: 10, chunks: 300, rulesYaml: 20000, rules: 50 };
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -51,6 +62,7 @@ async function sha256(s: string): Promise<string> {
 
 // 가입 때 받은 열쇠(Bearer)로 본인 자료만 다룬다
 async function auth(c: C, next: Next) {
+  if (!hasDb(c.env)) return c.json(NO_DB, 503);
   const token = (c.req.header("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!/^[a-f0-9]{64}$/.test(token)) return c.json({ error: "메일 가입 후 받은 열쇠가 필요합니다" }, 401);
   const row = await c.env.DB.prepare("SELECT id FROM leads WHERE token_hash = ?").bind(await sha256(token)).first<{ id: number }>();
@@ -106,6 +118,7 @@ async function userRuleSpecs(env: Env, leadId: number) {
 }
 
 async function leadFromHeader(c: C): Promise<number | null> {
+  if (!hasDb(c.env)) return null;
   const token = (c.req.header("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!/^[a-f0-9]{64}$/.test(token)) return null;
   const row = await c.env.DB.prepare("SELECT id FROM leads WHERE token_hash = ?").bind(await sha256(token)).first<{ id: number }>();
@@ -117,7 +130,7 @@ async function leadFromHeader(c: C): Promise<number | null> {
 app.get("/api/health", (c) => c.json({ ok: true, version: VERSION, mock: mock(c.env) }));
 
 app.get("/api/meta", (c) =>
-  c.json({ packs: PACKS, rules: BUILTIN_RULES.map((r) => ({ id: r.id, pack: r.pack, severity: r.severity, description: r.description })), contact: c.env.CONTACT_URL }),
+  c.json({ packs: PACKS, rules: BUILTIN_RULES.map((r) => ({ id: r.id, pack: r.pack, severity: r.severity, description: r.description })), contact: c.env.CONTACT_URL, privacy: privacyUrl(c.env), signup: hasDb(c.env) }),
 );
 
 // 열쇠 없이도 기본 규칙으로 검사한다. 열쇠가 있으면 내 규칙과 (guide: true 일 때) 가이드 판정을 더한다
@@ -148,6 +161,7 @@ app.post("/api/signup", async (c) => {
   const email = String(b.email ?? "").trim().toLowerCase();
   if (!/^[^\s@]{1,64}@[^\s@]{1,190}\.[a-z]{2,}$/.test(email)) return c.json({ error: "메일 주소를 확인해 주세요" }, 400);
   if (b.consent_privacy !== true) return c.json({ error: "개인정보 수집·이용에 동의해야 가입할 수 있습니다" }, 400);
+  if (!hasDb(c.env)) return c.json(NO_DB, 503);
   const marketing = b.consent_marketing === true;
   const exists = await c.env.DB.prepare("SELECT id FROM leads WHERE email = ?").bind(email).first();
   // 메일 확인 기능이 없는 v0.1 에서는 같은 메일로 새 열쇠를 내주지 않는다 (남의 메일로 열쇠를 가로채지 못하게)
@@ -175,33 +189,31 @@ function unsubUrl(c: C, unsub: string): string {
   return `${new URL(c.req.url).origin}/api/unsubscribe?t=${unsub}`;
 }
 
-// 처리 결과 안내 메일. 메일 설정(RESEND_API_KEY)이 없으면 메일 주소 없이 처리 종류만 로그에 남긴다
+// 처리 결과 안내 메일. 메일 설정(Gmail 또는 Resend)이 없으면 메일 주소 없이 처리 종류만 로그에 남긴다
 async function notifyConsent(env: Env, email: string, action: ConsentAction, at: string, unsubscribeUrl?: string) {
-  const { subject, text } = consentNotice({ action, at, contactUrl: env.CONTACT_URL, unsubscribeUrl });
-  if (!env.RESEND_API_KEY) {
+  const { subject, text } = consentNotice({ action, at, contactUrl: env.CONTACT_URL, privacyUrl: privacyUrl(env), unsubscribeUrl });
+  if (!mailOn(env)) {
     console.log(`동의 처리 결과 안내 (메일 미설정): ${action} ${at}`);
     return;
   }
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({ from: env.MAIL_FROM, to: [email], subject, text }),
-  });
-  if (!res.ok) console.error("동의 처리 결과 안내 메일 실패", res.status);
+  try {
+    await sendMail(env, { from: env.MAIL_FROM, to: email, subject, text });
+  } catch (e) {
+    console.error("동의 처리 결과 안내 메일 실패", (e as Error).message);
+  }
 }
 
 async function notifyOwner(env: Env, email: string, marketing: boolean) {
   const body = `munche-meo 새 가입\n메일: ${email}\n광고성 정보 수신: ${marketing ? "동의" : "미동의"}\n시각: ${new Date().toISOString()}`;
-  if (!env.RESEND_API_KEY || !env.OWNER_EMAIL) {
-    console.log(body);
+  if (!mailOn(env) || !env.OWNER_EMAIL) {
+    console.log("munche-meo 새 가입 (메일 미설정)");
     return;
   }
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({ from: env.MAIL_FROM, to: [env.OWNER_EMAIL], subject: "[munche-meo] 새 가입", text: body }),
-  });
-  if (!res.ok) console.error("가입 알림 메일 실패", res.status);
+  try {
+    await sendMail(env, { from: env.MAIL_FROM, to: env.OWNER_EMAIL, subject: "[문체냥] 새 가입", text: body });
+  } catch (e) {
+    console.error("가입 알림 메일 실패", (e as Error).message);
+  }
 }
 
 type LeadRow = { email: string; consent_marketing: number; consent_marketing_at: string | null; unsub_token: string | null };
@@ -228,14 +240,15 @@ app.put("/api/me/marketing", auth, async (c) => {
     await c.env.DB.prepare("UPDATE leads SET consent_marketing = 0, consent_marketing_at = NULL WHERE id = ?").bind(id).run();
     c.executionCtx.waitUntil(notifyConsent(c.env, row.email, "withdraw", now));
   }
-  return c.json({ consent_marketing: b.consent, at: now, notice: c.env.RESEND_API_KEY ? "mail" : "log" });
+  return c.json({ consent_marketing: b.consent, at: now, notice: mailOn(c.env) ? "mail" : "log" });
 });
 
 // 메일 속 수신 거부 링크. 열쇠 없이 한 번 누르면 철회되고 비용이 들지 않는다 (제50조 제4항·제6항)
 app.on(["GET", "POST"], "/api/unsubscribe", async (c) => {
   const t = c.req.query("t") || "";
+  if (!hasDb(c.env)) return c.json(NO_DB, 503);
   const page = (msg: string, status: 200 | 404) =>
-    c.html(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>문체냥 수신 거부</title></head><body style="font-family:sans-serif;max-width:560px;margin:40px auto;padding:0 16px;word-break:keep-all"><p>${msg}</p><p>보낸 곳: Define404 · 연락처: <a href="${c.env.CONTACT_URL}">${c.env.CONTACT_URL}</a></p></body></html>`, status);
+    c.html(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>문체냥 수신 거부</title></head><body style="font-family:sans-serif;max-width:560px;margin:40px auto;padding:0 16px;word-break:keep-all"><p>${msg}</p><p>보낸 곳: Define404 · 연락처: <a href="${c.env.CONTACT_URL}">${c.env.CONTACT_URL}</a> · <a href="${privacyUrl(c.env)}">개인정보 처리방침</a></p></body></html>`, status);
   if (!/^[a-f0-9]{64}$/.test(t)) return page("수신 거부 링크가 맞지 않습니다. 연락처로 알려 주시면 바로 철회해 드립니다.", 404);
   const row = await c.env.DB.prepare("SELECT email, consent_marketing, consent_marketing_at, unsub_token FROM leads WHERE unsub_token = ?").bind(t).first<LeadRow>();
   if (!row) return page("이미 탈퇴했거나 없는 링크입니다. 광고성 메일은 보내지 않습니다.", 404);
@@ -244,7 +257,7 @@ app.on(["GET", "POST"], "/api/unsubscribe", async (c) => {
     await c.env.DB.prepare("UPDATE leads SET consent_marketing = 0, consent_marketing_at = NULL WHERE unsub_token = ?").bind(t).run();
     c.executionCtx.waitUntil(notifyConsent(c.env, row.email, "withdraw", now));
   }
-  return page(`광고성 정보 수신 동의를 철회했습니다. 이후 광고성 메일은 보내지 않습니다.${c.env.RESEND_API_KEY ? " 처리 결과는 메일로도 알려 드립니다." : ""}`, 200);
+  return page(`광고성 정보 수신 동의를 철회했습니다. 이후 광고성 메일은 보내지 않습니다.${mailOn(c.env) ? " 처리 결과는 메일로도 알려 드립니다." : ""}`, 200);
 });
 
 // 탈퇴: 메일, 동의 기록, 규칙, 가이드를 모두 지운다
@@ -391,6 +404,7 @@ app.onError((err, c) => {
 
 // 매일 한국 시각 오전 10시(wrangler.toml cron): 동의한 지 2년이 지난 광고 수신 동의를 끝내고 본인에게 알린다 (제50조 제8항)
 async function expireMarketing(env: Env) {
+  if (!hasDb(env)) return;
   const cutoff = new Date(Date.now() - MARKETING_TTL_DAYS * 86400000).toISOString();
   const rows = await env.DB.prepare("SELECT id, email FROM leads WHERE consent_marketing = 1 AND consent_marketing_at <= ?").bind(cutoff).all<{ id: number; email: string }>();
   const now = new Date().toISOString();
