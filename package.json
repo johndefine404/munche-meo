@@ -12,7 +12,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.ts",
-    "check": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "check": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.webtest.json",
     "dev": "wrangler dev",
     "dev:mock": "wrangler d1 migrations apply DB --local -c wrangler.mock.toml && wrangler dev -c wrangler.mock.toml",
     "deploy": "wrangler deploy"

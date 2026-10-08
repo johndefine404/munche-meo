@@ -12,5 +12,6 @@
     "erasableSyntaxOnly": true,
     "types": ["node"]
   },
-  "include": ["src/core/**/*.ts", "src/node/**/*.ts", "hooks/**/*.ts", "test/**/*.ts"]
+  "include": ["src/core/**/*.ts", "src/node/**/*.ts", "hooks/**/*.ts", "test/**/*.ts"],
+  "exclude": ["test/guard.test.ts"]
 }

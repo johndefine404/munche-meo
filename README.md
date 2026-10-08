@@ -253,6 +253,13 @@ claude mcp add munche-meo -- node /절대경로/munche-meo/src/node/mcp.ts
   - 개인정보 보호법 제22조 제1항·제5항: 동의는 항목별로 나누고, 광고 수신 동의는 따로 받으며, 선택 동의를 안 했다고 서비스를 거절하지 않습니다
   - 정보통신망법 제50조: 사전 동의(제1항), 거부 후 발송 금지(제2항), 야간 별도 동의(제3항), 보낸 곳·연락처·철회 방법 표시(제4항), 철회 비용 없음(제6항), 처리 결과 통지(제7항), 2년마다 재확인(제8항)
 
+### 다른 사이트 요청 차단
+
+- 쓰기 요청(POST·PUT·PATCH·DELETE)은 `Origin` 이 이 사이트(요청 주소 또는 `PUBLIC_URL`)일 때만 받습니다. 다른 사이트면 403을 돌려주고 아무것도 쓰지 않습니다. `MOCK=1` 에서는 `http://localhost` 도 받습니다.
+- `Origin: null` 은 `Sec-Fetch-Site: same-origin` 일 때만 받습니다. `Origin` 이 없으면 `Sec-Fetch-Site: cross-site` 만 거절하므로 서버끼리 부르는 요청(원격 MCP, 메일 클라이언트의 원클릭 수신 거부)은 그대로 됩니다.
+- `/api/*` 의 POST·PUT·PATCH 는 `Content-Type: application/json` 만 받습니다(아니면 415). RFC 8058 원클릭 수신 거부(`POST /api/unsubscribe`, 폼 전송)는 예외입니다.
+- 코드: `src/web/guard.ts`, 시험: `test/guard.test.ts`.
+
 ### 로컬 시험 (AI 호출 없음)
 
 ```bash

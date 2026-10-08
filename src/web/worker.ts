@@ -9,6 +9,7 @@ import { BUILTIN_RULES, PACKS } from "../core/rules.ts";
 import type { CheckOptions, Violation } from "../core/types.ts";
 import { compileSpec, parseRuleYaml } from "../core/user-rules.ts";
 import { mailProvider, sendMail } from "../core/mail.ts";
+import { isJson, originBlock, SAFE_METHODS } from "./guard.ts";
 
 interface Env {
   ASSETS: Fetcher;
@@ -26,6 +27,7 @@ interface Env {
   GMAIL_REFRESH_TOKEN?: string;
   RESEND_API_KEY?: string;
   OWNER_EMAIL?: string;
+  PUBLIC_URL?: string;
 }
 
 type Vars = { leadId: number };
@@ -43,6 +45,21 @@ const NO_DB = { error: "가입과 내 규칙·가이드 기능은 준비 중입�
 const LIMITS = { text: 20000, guideText: 50000, guides: 10, chunks: 300, rulesYaml: 20000, rules: 50 };
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
+
+// 다른 사이트에서 보낸 브라우저 쓰기 요청은 받지 않는다 (src/web/guard.ts)
+app.use("*", async (c, next) => {
+  const why = originBlock(c.req.method, c.req.raw.headers, c.req.url, c.env);
+  if (why) return c.json({ error: why }, 403);
+  await next();
+});
+
+// JSON API 쓰기 경로는 application/json 만 받는다. 메일 클라이언트가 폼으로 보내는 원클릭 수신 거부(RFC 8058)는 뺀다
+app.use("/api/*", async (c, next) => {
+  if (!SAFE_METHODS.has(c.req.method) && c.req.method !== "DELETE" && c.req.path !== "/api/unsubscribe" && !isJson(c.req.raw.headers)) {
+    return c.json({ error: "Content-Type: application/json 으로 보내 주세요" }, 415);
+  }
+  await next();
+});
 
 // 접속자별 요청 제한
 app.use("/api/*", limit);
