@@ -6,7 +6,7 @@
 //     severity: warn            # error | warn | info (기본 warn)
 //     banned: [고객님]           # 금지어
 //   - id: brand
-//     replace: { 여우비: Yeowubie }   # 바꿀 말 제안
+//     replace: { 디파인404: Define404 }   # 바꿀 말 제안
 //   - id: no-double-bang
 //     regex: "!{2,}"             # 정규식
 //   - id: formal-only

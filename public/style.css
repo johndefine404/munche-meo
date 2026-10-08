@@ -70,10 +70,11 @@ section.block{padding:64px 0;border-top:1px solid var(--line)}
 input[type=email]{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#FCFCFA}
 .consent{display:flex;gap:8px;align-items:flex-start;font-size:15px;margin-top:6px}
 .consent input{margin-top:5px}
-.consent-detail{font-size:13px;color:var(--sub);margin-left:24px}
+.consent-detail{font-size:14px;color:var(--sub);margin-left:24px}
 .consent-detail summary{cursor:pointer}
 .consent-detail ul{margin:6px 0 0;padding-left:18px}
 .note{font-size:13px;color:var(--sub)}
+.signup .note{font-size:14px}
 .member{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 .member .key{grid-column:1 / -1;display:flex;flex-direction:column;gap:6px}
 .member .key .note{margin-left:8px}
@@ -107,6 +108,7 @@ footer{padding:32px 0 80px;border-top:1px solid var(--line);font-size:14px;color
   .top nav{display:none}
 }
 @media (max-width:560px){
+  .consent-detail,.signup .note{font-size:15px}
   .rule-table thead{display:none}
   .rule-table tr{display:block;border-bottom:1px solid var(--line);padding:10px 0}
   .rule-table td{display:block;border:0;padding:2px 14px}

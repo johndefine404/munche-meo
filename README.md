@@ -83,6 +83,7 @@ git clone https://github.com/johndefine404/munche-meo
 cd munche-meo
 npm install
 npm test
+npm run check   # 타입 검사
 ```
 
 npm 배포는 아직 하지 않았습니다. 아래 예시의 `/절대경로/munche-meo`는 내려받은 폴더 경로로 바꿉니다.

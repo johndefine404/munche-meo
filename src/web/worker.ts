@@ -28,6 +28,7 @@ type C = Context<{ Bindings: Env; Variables: Vars }>;
 
 const VERSION = "0.1.0";
 const CONSENT_VERSION = "2026-10-09";
+const MCP_BATCH_MAX = 20;
 const LIMITS = { text: 20000, guideText: 50000, guides: 10, chunks: 300, rulesYaml: 20000, rules: 50 };
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -370,8 +371,13 @@ const remoteTools: Tool[] = [
 app.post("/mcp", async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400);
-  const msgs = Array.isArray(body) ? body : [body];
-  const out = (await Promise.all(msgs.map((m) => handleRpc(m, remoteTools, "munche-meo", VERSION)))).filter(Boolean);
+  const msgs: unknown[] = Array.isArray(body) ? body : [body];
+  // 한 요청에 묶을 수 있는 메시지 수를 제한한다 (요청 제한을 묶음으로 우회하지 못하게)
+  if (msgs.length > MCP_BATCH_MAX) return c.json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `batch up to ${MCP_BATCH_MAX}` } }, 400);
+  const invalid = { jsonrpc: "2.0", id: null, error: { code: -32600, message: "invalid request" } };
+  const out = (
+    await Promise.all(msgs.map((m) => (m && typeof m === "object" && !Array.isArray(m) ? handleRpc(m as Record<string, unknown>, remoteTools, "munche-meo", VERSION) : invalid)))
+  ).filter(Boolean);
   if (!out.length) return c.body(null, 202);
   return c.json(Array.isArray(body) ? out : out[0]);
 });
