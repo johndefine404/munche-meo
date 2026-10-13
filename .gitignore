@@ -18,3 +18,19 @@ secrets/
 *.key
 __pycache__/
 wrangler.prod.toml
+
+# AI 도구 설정·작업 흔적 (저장소에 올리지 않는다)
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.cursor/
+.cursorrules
+.continue/
+.aider*
+.windsurf/
+.codeium/
+.mcp.json
+*.ai-prompt
+*.ai-draft
+ai-scratchpad/
