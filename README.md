@@ -332,7 +332,7 @@ test/        node --test 시험
 
 ## 만든 곳
 
-[Define404](https://contact.define404.com) · JohnLKim
+[Define404](https://contact.define404.com) · JohnKim
 
 팀 문체 가이드를 규칙 파일로 정리하는 일, 사내 도구에 설치하는 일은 Define404에 문의해 주세요.
 
