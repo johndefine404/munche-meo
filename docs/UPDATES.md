@@ -1,5 +1,12 @@
 # 업데이트 내역
 
+## 2026-11-24
+
+- README에 Glama 목록 배지를 달았다. awesome-mcp-servers 등록 PR(#16063) 관리자가 Glama 링크백이 있는 서버를 우선 처리한다고 요구해 따른 것이다.
+  - README.md
+  - 배지 이미지와 목록 페이지 응답 200 확인, 운영 배포는 하지 않음(README만 변경)
+  - 남음: PR 설명에 링크백 사실 적기
+
 ## 2026-10-26
 
 - 카피 개편본 운영 배포(Cloudflare wrangler). 실제 주소 munche.define404.com 에서 새 제목 문구 노출 확인, GitHub 푸시 완료.

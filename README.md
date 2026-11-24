@@ -4,6 +4,8 @@
 
 [Define404]
 
+[![johndefine404/munche-meo MCP server](https://glama.ai/mcp/servers/johndefine404/munche-meo/badges/score.svg)](https://glama.ai/mcp/servers/johndefine404/munche-meo)
+
 바로 써 보기: https://munche.define404.com
 
 ![문체냥 화면](docs/screenshot.png)
